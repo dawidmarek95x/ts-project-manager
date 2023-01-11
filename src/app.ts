@@ -1,3 +1,54 @@
+// Project Type
+enum ProjectStatus {
+  Active,
+  Completed,
+}
+
+class Project {
+  constructor(
+    public id: string,
+    public title: string,
+    public description: string,
+    public people: number,
+    public status: ProjectStatus
+  ) {
+
+  }
+}
+
+// Project State Management
+type Listener = (items: Project[]) => void;
+
+class ProjectState {
+  private listeners: Listener[] = [];
+  private projects: Project[] = [];
+  private static instance: ProjectState;
+
+  private constructor() {}
+
+  static getInstance() {
+    if (this.instance) {
+      return this.instance;
+    }
+    this.instance = new ProjectState();
+    return this.instance;
+  }
+
+  addListener(listenerFn: Listener) {
+    this.listeners.push(listenerFn);
+  }
+
+  addProject(title: string, description: string, numOfPeople: number) {
+    const newProject = new Project(Math.random().toString(), title, description, numOfPeople, ProjectStatus.Active);
+    this.projects.push(newProject);
+    for (const listenerFn of this.listeners) {
+      listenerFn(this.projects.slice());
+    }
+  }
+}
+
+const projectState = ProjectState.getInstance();
+
 // Validation
 interface Validatable {
   value: string | number;
@@ -48,11 +99,11 @@ function autobind(
   _methodName: string,
   descriptor: PropertyDescriptor
 ) {
-  const originalmethod = descriptor.value;
+  const originalMethod = descriptor.value;
   const adjDescriptor: PropertyDescriptor = {
     configurable: true,
     get() {
-      const boundFn = originalmethod.bind(this);
+      const boundFn = originalMethod.bind(this);
       return boundFn;
     },
   };
@@ -64,12 +115,14 @@ class ProjectList {
   templateElement: HTMLTemplateElement;
   hostElement: HTMLDivElement;
   element: HTMLElement;
+  assignedProjects: Project[];
 
-  constructor(private type: "active" | "finished") {
+  constructor(private type: "active" | "completed") {
     this.templateElement = document.getElementById(
       "project-list"
     )! as HTMLTemplateElement;
     this.hostElement = document.getElementById("app")! as HTMLDivElement;
+    this.assignedProjects = [];
 
     const importedNode = document.importNode(
       this.templateElement.content,
@@ -77,8 +130,32 @@ class ProjectList {
     );
     this.element = importedNode.firstElementChild as HTMLElement;
     this.element.id = `${this.type}-projects`;
+
+    projectState.addListener((projects: Project[]) => {
+      const relevantProjects = projects.filter(project => {
+        if (this.type === "active") {
+          return project.status === ProjectStatus.Active
+        }
+        return project.status === ProjectStatus.Completed
+      })
+      this.assignedProjects = relevantProjects;
+      this.renderProjects();
+    });
+
     this.attach();
     this.renderContent();
+  }
+
+  private renderProjects() {
+    const listEl = document.getElementById(
+      `${this.type}-projects__list`
+    )! as HTMLUListElement;
+    listEl.innerHTML = "";
+    for (const prjItem of this.assignedProjects) {
+      const listItem = document.createElement("li");
+      listItem.textContent = prjItem.title;
+      listEl.appendChild(listItem);
+    }
   }
 
   private renderContent() {
@@ -86,7 +163,7 @@ class ProjectList {
     this.element.querySelector("ul")!.id = listId;
     this.element.querySelector(
       "h2"
-    )!.textContent = `${this.type.toLocaleUpperCase()} PROJECTS`;
+    )!.textContent = `${this.type.toUpperCase()} PROJECTS`;
   }
 
   private attach() {
@@ -157,25 +234,26 @@ class ProjectInput {
       !validate(peopleValidatable)
     ) {
       alert("Invalid input, please try again!");
+      return;
     } else {
       return [enteredTitle, enteredDescription, +enteredPeople];
     }
   }
 
-  private clearInput() {
+  private clearInputs() {
     this.titleInputElement.value = "";
     this.descriptionInputElement.value = "";
     this.peopleInputElement.value = "";
   }
 
   @autobind
-  private submitHandler(evt: Event) {
-    evt.preventDefault();
+  private submitHandler(event: Event) {
+    event.preventDefault();
     const userInput = this.gatherUserInput();
     if (Array.isArray(userInput)) {
       const [title, description, people] = userInput;
-      console.log(title, description, people);
-      this.clearInput();
+      projectState.addProject(title, description, people);
+      this.clearInputs();
     }
   }
 
@@ -188,6 +266,6 @@ class ProjectInput {
   }
 }
 
-const projectInput = new ProjectInput();
-const activeProjectList = new ProjectList("active");
-const finishedProjectList = new ProjectList("finished");
+const prjInput = new ProjectInput();
+const activePrjList = new ProjectList("active");
+const completedPrjList = new ProjectList("completed");
